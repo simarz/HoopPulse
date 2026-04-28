@@ -228,26 +228,29 @@ async def get_today_props():
         )
 
     games = await get_today_games()
-    all_props: list[dict] = []
+
+    async def _fetch_game_props(client: httpx.AsyncClient, game: dict) -> list[dict]:
+        try:
+            resp = await client.get(
+                f"{_BASE}/sports/{_SPORT}/events/{game['id']}/odds",
+                params={
+                    "apiKey": _API_KEY,
+                    "regions": "us",
+                    "markets": "player_points,player_rebounds,player_assists",
+                    "oddsFormat": "american",
+                },
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return _extract_props(resp.json(), game)
+        except Exception:
+            pass
+        return []
 
     async with httpx.AsyncClient() as client:
-        for game in games:
-            try:
-                resp = await client.get(
-                    f"{_BASE}/sports/{_SPORT}/events/{game['id']}/odds",
-                    params={
-                        "apiKey": _API_KEY,
-                        "regions": "us",
-                        "markets": "player_points,player_rebounds,player_assists",
-                        "oddsFormat": "american",
-                    },
-                    timeout=15,
-                )
-                if resp.status_code == 200:
-                    all_props.extend(_extract_props(resp.json(), game))
-            except Exception:
-                continue
+        results = await asyncio.gather(*[_fetch_game_props(client, g) for g in games])
 
+    all_props: list[dict] = [prop for game_props in results for prop in game_props]
     cache.set(cache_key, all_props)
     return all_props
 
@@ -331,7 +334,7 @@ async def get_recommendations(season: str = "2025-26", top_n: int = 12):
         return []
 
     all_players = _nba_players.get_players()
-    sem = asyncio.Semaphore(10)  # cap concurrent NBA API calls
+    sem = asyncio.Semaphore(5)  # leave threads free for concurrent page requests
 
     async def analyze(prop_row: dict) -> dict | None:
         player_id = _find_player_id(prop_row["player"], all_players)

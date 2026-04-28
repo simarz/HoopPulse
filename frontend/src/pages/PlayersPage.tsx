@@ -116,7 +116,8 @@ export default function PlayersPage() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["playerStats", season, seasonType, measureType, perMode],
     queryFn: () => fetchPlayerStats({ season, season_type: seasonType, measure_type: measureType, per_mode: perMode }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 6 * 60 * 60 * 1000,
+    gcTime: 6 * 60 * 60 * 1000,
   });
 
   const columns = useMemo(() => getColumns(measureType), [measureType]);

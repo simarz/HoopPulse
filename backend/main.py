@@ -12,19 +12,18 @@ logger = logging.getLogger("uvicorn.error")
 
 
 async def _warm_cache():
-    """
-    Pre-fetch the props pipeline on startup so the first user hits warm cache.
-    get_recommendations chains through get_today_props → get_today_games,
-    so one call warms everything.
-    """
     try:
-        logger.info("Cache warm: fetching today's games and props...")
+        logger.info("Cache warm: fetching today's props...")
         await odds.get_today_props()
-        logger.info("Cache warm: calculating recommendations (this takes ~30s)...")
-        await odds.get_recommendations()
+        logger.info("Cache warm: warming recommendations, player stats, and team stats concurrently...")
+        await asyncio.gather(
+            odds.get_recommendations(),
+            players.get_player_stats(),
+            teams.get_team_stats(),
+            return_exceptions=True,
+        )
         logger.info("Cache warm: done ✓")
     except Exception as e:
-        # API key not set, no games today, network error — all fine, just skip
         logger.warning(f"Cache warm skipped: {type(e).__name__}: {e}")
 
 
