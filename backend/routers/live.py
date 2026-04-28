@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from nba_api.live.nba.endpoints import scoreboard, playbyplay
+from nba_api.live.nba.endpoints import scoreboard, playbyplay, boxscore as _boxscore_ep
 
 router = APIRouter()
 
@@ -10,6 +10,15 @@ async def get_scoreboard():
     try:
         board = await asyncio.to_thread(scoreboard.ScoreBoard)
         return board.get_dict()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"nba_api error: {e}")
+
+
+@router.get("/boxscore/{game_id}")
+async def get_boxscore(game_id: str):
+    try:
+        bs = await asyncio.to_thread(_boxscore_ep.BoxScore, game_id=game_id)
+        return bs.get_dict()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"nba_api error: {e}")
 

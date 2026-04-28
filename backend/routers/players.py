@@ -56,7 +56,7 @@ async def get_player_stats(
     per_mode: str = "PerGame",
 ):
     key = f"player_stats:{season}:{season_type}:{measure_type}:{per_mode}"
-    cached = cache.get(key)
+    cached = cache.get(key, ttl=21600)
     if cached is not None:
         return cached
 
