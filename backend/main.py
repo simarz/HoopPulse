@@ -12,19 +12,30 @@ logger = logging.getLogger("uvicorn.error")
 
 
 async def _warm_cache():
-    try:
-        logger.info("Cache warm: fetching today's props...")
-        await odds.get_today_props()
-        logger.info("Cache warm: warming recommendations, player stats, and team stats concurrently...")
-        await asyncio.gather(
-            odds.get_recommendations(),
-            players.get_player_stats(),
-            teams.get_team_stats(),
-            return_exceptions=True,
-        )
-        logger.info("Cache warm: done ✓")
-    except Exception as e:
-        logger.warning(f"Cache warm skipped: {type(e).__name__}: {e}")
+    """
+    Pre-fetch the slow endpoints on startup so the first user hits warm cache.
+    Each step swallows its own failures so one outage doesn't block the others.
+    """
+    async def _safe(label: str, coro):
+        try:
+            await coro
+            logger.info(f"Cache warm: {label} ✓")
+        except Exception as e:
+            logger.warning(f"Cache warm: {label} skipped — {type(e).__name__}: {e}")
+
+    # Player + team season stats — what /players and /teams open with.
+    # Run in parallel; each underlying NBA endpoint is independent.
+    await asyncio.gather(
+        _safe("player stats (Base)", players.get_player_stats(measure_type="Base")),
+        _safe("player stats (Advanced)", players.get_player_stats(measure_type="Advanced")),
+        _safe("team stats (Base)", teams.get_team_stats(season="2025-26", measure_type="Base")),
+        _safe("team stats (Advanced)", teams.get_team_stats(season="2025-26", measure_type="Advanced")),
+    )
+
+    # Odds pipeline — get_recommendations chains through props → games.
+    await _safe("today's props", odds.get_today_props())
+    await _safe("recommendations (~30s)", odds.get_recommendations())
+    logger.info("Cache warm: done")
 
 
 @asynccontextmanager

@@ -7,6 +7,11 @@ from nba_headers import STATS_HEADERS, PROXY
 
 router = APIRouter()
 
+# Build a TEAM_ID -> abbreviation lookup once at import time.
+_ABBR_BY_ID: dict[int, str] = {
+    t["id"]: t["abbreviation"] for t in nba_teams.get_teams()
+}
+
 
 @router.get("")
 def get_all_teams():
@@ -21,7 +26,7 @@ async def get_team_stats(
     per_mode: str = "PerGame",
 ):
     key = f"team_stats:{season}:{season_type}:{measure_type}:{per_mode}"
-    cached = cache.get(key, ttl=21600)
+    cached = cache.get(key, ttl=1800)
     if cached is not None:
         return cached
 
@@ -37,6 +42,8 @@ async def get_team_stats(
             timeout=90,
         )
         data = endpoint.get_data_frames()[0].to_dict(orient="records")
+        for row in data:
+            row["TEAM_ABBREVIATION"] = _ABBR_BY_ID.get(row.get("TEAM_ID"), "")
         cache.set(key, data)
         return data
     except Exception as e:

@@ -63,6 +63,7 @@ export interface StatSummary {
 
 export interface Recommendation {
   player: string;
+  player_id: number | null;
   away_team: string;
   home_team: string;
   best_stat: "points" | "rebounds" | "assists";

@@ -1,379 +1,73 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  fetchTodayGames,
-  fetchTodayProps,
   fetchRecommendations,
-  type GameOdds,
-  type PlayerProps,
-  type PropLine,
+  fetchTodayProps,
   type Recommendation,
+  type PlayerProps,
 } from "../api/odds";
-import { fetchPlayerSearch, fetchPlayerGamelog } from "../api/players";
-import "./PropsPage.css";
-import "./Page.css";
+import { useApp } from "../context/AppContext";
+import PlayerAvatar from "../components/PlayerAvatar";
+import Sparkline from "../components/Sparkline";
+import HitDots from "../components/HitDots";
 
-function fmtOdds(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
-}
+type StatFilter = "All" | "PTS" | "REB" | "AST";
 
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
-}
-
-function teamShort(name: string): string {
-  const words = name.split(" ");
-  return words[words.length - 1];
-}
-
-// ── Win Probability Bar ──────────────────────────────────────────────────────
-
-function WinBar({
-  homePct,
-  awayPct,
-  homeTeam,
-  awayTeam,
-}: {
-  homePct: number;
-  awayPct: number;
-  homeTeam: string;
-  awayTeam: string;
-}) {
-  return (
-    <div className="win-bar-container">
-      <div className="win-bar">
-        <div
-          className="win-bar-fill win-bar-fill--away"
-          style={{ width: `${awayPct}%` }}
-          title={`${awayTeam} ${awayPct}%`}
-        />
-        <div
-          className="win-bar-fill win-bar-fill--home"
-          style={{ width: `${homePct}%` }}
-          title={`${homeTeam} ${homePct}%`}
-        />
-      </div>
-      <div className="win-pct-row">
-        <span className="win-pct">{awayPct}%</span>
-        <span className="win-pct-label">Win Prob</span>
-        <span className="win-pct">{homePct}%</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Game Card ────────────────────────────────────────────────────────────────
-
-function GameCard({
-  game,
-  selected,
-  onClick,
-}: {
-  game: GameOdds;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const awayShort = teamShort(game.away_team);
-  const homeShort = teamShort(game.home_team);
-
-  return (
-    <div
-      className={`game-card ${selected ? "game-card--selected" : ""}`}
-      onClick={onClick}
-    >
-      <div className="game-card-header">
-        <span className="game-team">{awayShort}</span>
-        <span className="game-at">@</span>
-        <span className="game-team">{homeShort}</span>
-      </div>
-      <div className="game-time">{fmtTime(game.commence_time)}</div>
-
-      {game.h2h && (
-        <>
-          <WinBar
-            awayPct={game.h2h.away_win_pct}
-            homePct={game.h2h.home_win_pct}
-            awayTeam={game.away_team}
-            homeTeam={game.home_team}
-          />
-          <div className="game-odds-grid">
-            <span className="odds-label">ML</span>
-            <span className="odds-val">{fmtOdds(game.h2h.away_odds)}</span>
-            <span className="odds-val">{fmtOdds(game.h2h.home_odds)}</span>
-
-            {game.spread && (
-              <>
-                <span className="odds-label">SPD</span>
-                <span className="odds-val">
-                  {game.spread.away_spread > 0 ? "+" : ""}
-                  {game.spread.away_spread}
-                  <span className="odds-juice">
-                    {" "}
-                    ({fmtOdds(game.spread.away_odds)})
-                  </span>
-                </span>
-                <span className="odds-val">
-                  {game.spread.home_spread > 0 ? "+" : ""}
-                  {game.spread.home_spread}
-                  <span className="odds-juice">
-                    {" "}
-                    ({fmtOdds(game.spread.home_odds)})
-                  </span>
-                </span>
-              </>
-            )}
-
-            {game.total && (
-              <>
-                <span className="odds-label">O/U</span>
-                <span className="odds-val" style={{ gridColumn: "2 / 4" }}>
-                  {game.total.line}
-                  <span className="odds-juice">
-                    {" "}(O {fmtOdds(game.total.over_odds)} / U{" "}
-                    {fmtOdds(game.total.under_odds)})
-                  </span>
-                </span>
-              </>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Hit Tracker Table ────────────────────────────────────────────────────────
-
-function StatCell({ value, line }: { value: number; line: number }) {
-  const hit = value > line;
-  return (
-    <td className={hit ? "stat-hit" : "stat-miss"}>
-      {value}&nbsp;{hit ? "✓" : "✗"}
-    </td>
-  );
-}
-
-function TrackerTable({
-  gamelog,
-  props,
-}: {
-  gamelog: Record<string, unknown>[];
-  props: PlayerProps["props"];
-}) {
-  const hasPts = !!props.points;
-  const hasReb = !!props.rebounds;
-  const hasAst = !!props.assists;
-
-  return (
-    <table className="tracker-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Matchup</th>
-          {hasPts && <th>PTS / O&nbsp;{props.points!.line}</th>}
-          {hasReb && <th>REB / O&nbsp;{props.rebounds!.line}</th>}
-          {hasAst && <th>AST / O&nbsp;{props.assists!.line}</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {gamelog.map((g, i) => (
-          <tr key={i}>
-            <td>{String(g.GAME_DATE ?? "")}</td>
-            <td>{String(g.MATCHUP ?? "")}</td>
-            {hasPts && (
-              <StatCell value={Number(g.PTS ?? 0)} line={props.points!.line} />
-            )}
-            {hasReb && (
-              <StatCell
-                value={Number(g.REB ?? 0)}
-                line={props.rebounds!.line}
-              />
-            )}
-            {hasAst && (
-              <StatCell
-                value={Number(g.AST ?? 0)}
-                line={props.assists!.line}
-              />
-            )}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// ── Hit Dots ─────────────────────────────────────────────────────────────────
-
-function HitDots({
-  gamelog,
-  line,
-  statKey,
-}: {
-  gamelog: Record<string, unknown>[];
-  line: number;
-  statKey: string;
-}) {
-  return (
-    <div className="hit-dots">
-      {gamelog.slice(0, 5).map((g, i) => {
-        const val = Number(g[statKey] ?? 0);
-        return (
-          <span
-            key={i}
-            className={`hit-dot ${val > line ? "hit-dot--hit" : "hit-dot--miss"}`}
-            title={`${val} (line: ${line})`}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Prop Line Cell ───────────────────────────────────────────────────────────
-
-function PropLineCell({ prop }: { prop?: PropLine }) {
-  if (!prop) return <span className="no-prop">—</span>;
-  return (
-    <span className="prop-line">
-      <span className="prop-line-num">{prop.line}</span>
-      <span className="prop-line-odds">
-        &nbsp;{fmtOdds(prop.over_odds)}/{fmtOdds(prop.under_odds)}
-      </span>
-    </span>
-  );
-}
-
-// ── Prop Row (with embedded hit tracker) ─────────────────────────────────────
-
-function PropRow({ row }: { row: PlayerProps }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const { data: searchResults } = useQuery({
-    queryKey: ["playerSearch", row.player],
-    queryFn: () => fetchPlayerSearch(row.player),
-    enabled: expanded,
-    staleTime: Infinity,
-  });
-
-  const playerId = searchResults?.[0]?.id;
-
-  const { data: gamelog, isLoading: loadingLog } = useQuery({
-    queryKey: ["playerGamelog", playerId, "2025-26"],
-    queryFn: () => fetchPlayerGamelog(playerId!, "2025-26", 5),
-    enabled: !!playerId,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  return (
-    <>
-      <tr
-        className={`prop-row ${expanded ? "prop-row--open" : ""}`}
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <td className="prop-player-cell">
-          <span className="prop-chevron">{expanded ? "▾" : "▸"}</span>
-          {row.player}
-        </td>
-        <td>
-          <PropLineCell prop={row.props.points} />
-        </td>
-        <td>
-          <PropLineCell prop={row.props.rebounds} />
-        </td>
-        <td>
-          <PropLineCell prop={row.props.assists} />
-        </td>
-        <td className="dots-cell">
-          {gamelog && row.props.points ? (
-            <HitDots
-              gamelog={gamelog}
-              line={row.props.points.line}
-              statKey="PTS"
-            />
-          ) : (
-            <span className="no-prop track-hint">
-              {expanded && loadingLog ? "⋯" : "▸ expand"}
-            </span>
-          )}
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="tracker-row">
-          <td colSpan={5}>
-            <div className="tracker-content">
-              {loadingLog ? (
-                <span className="tracker-loading">
-                  Loading last 5 games...
-                </span>
-              ) : gamelog ? (
-                <TrackerTable gamelog={gamelog} props={row.props} />
-              ) : (
-                <span className="tracker-loading">
-                  Player not found in NBA database.
-                </span>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-// ── Recommended Pick Card ─────────────────────────────────────────────────────
-
-const STAT_LABEL: Record<string, string> = {
+const STAT_LABEL: Record<string, "PTS" | "REB" | "AST"> = {
   points: "PTS",
   rebounds: "REB",
   assists: "AST",
 };
 
-function RecCard({ rec }: { rec: Recommendation }) {
-  const label = STAT_LABEL[rec.best_stat] ?? rec.best_stat.toUpperCase();
-  const pct = Math.round((rec.best_hits / rec.games_checked) * 100);
-  const tier =
-    rec.best_hits === 5 ? "rec-card--fire" : rec.best_hits === 4 ? "rec-card--hot" : "";
+// Map team full names to NBA tricodes for the TeamDot mark.
+const TEAM_ABBR: Record<string, string> = {
+  "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
+  "Charlotte Hornets": "CHA", "Chicago Bulls": "CHI", "Cleveland Cavaliers": "CLE",
+  "Dallas Mavericks": "DAL", "Denver Nuggets": "DEN", "Detroit Pistons": "DET",
+  "Golden State Warriors": "GSW", "Houston Rockets": "HOU", "Indiana Pacers": "IND",
+  "Los Angeles Clippers": "LAC", "LA Clippers": "LAC", "Los Angeles Lakers": "LAL",
+  "Memphis Grizzlies": "MEM", "Miami Heat": "MIA", "Milwaukee Bucks": "MIL",
+  "Minnesota Timberwolves": "MIN", "New Orleans Pelicans": "NOP", "New York Knicks": "NYK",
+  "Oklahoma City Thunder": "OKC", "Orlando Magic": "ORL", "Philadelphia 76ers": "PHI",
+  "Phoenix Suns": "PHX", "Portland Trail Blazers": "POR", "Sacramento Kings": "SAC",
+  "San Antonio Spurs": "SAS", "Toronto Raptors": "TOR", "Utah Jazz": "UTA",
+  "Washington Wizards": "WAS",
+};
 
-  return (
-    <div className={`rec-card ${tier}`}>
-      <div className="rec-top">
-        <span className="rec-player">{rec.player}</span>
-        <span className={`rec-badge ${tier}`}>
-          {rec.best_hits}/{rec.games_checked}
-        </span>
-      </div>
-      <div className="rec-prop">
-        O&nbsp;{rec.best_line}&nbsp;{label}
-      </div>
-      <div className="rec-dots">
-        {rec.best_results.map((r, i) => (
-          <span
-            key={i}
-            className={`hit-dot ${r.hit ? "hit-dot--hit" : "hit-dot--miss"}`}
-            title={String(r.value)}
-          />
-        ))}
-        <span className="rec-pct">{pct}%</span>
-      </div>
-      <div className="rec-game">
-        {teamShort(rec.away_team)}&nbsp;@&nbsp;{teamShort(rec.home_team)}
-      </div>
-    </div>
-  );
+function abbr(name: string): string {
+  if (!name) return "";
+  return TEAM_ABBR[name] ?? name.split(" ").pop()?.slice(0, 3).toUpperCase() ?? "";
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+interface BetLeg {
+  id: string;
+  player: string;
+  stat: "PTS" | "REB" | "AST";
+  line: number;
+  hits: number;
+  games: number;
+  odds: number;
+}
+
+function americanToDecimal(odds: number): number {
+  if (odds > 0) return 1 + odds / 100;
+  return 1 + 100 / Math.abs(odds);
+}
+
+function fmtOdds(n: number | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return n > 0 ? `+${n}` : String(n);
+}
 
 export default function PropsPage() {
-  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const { scope, myTeam } = useApp();
+  const [filter, setFilter] = useState<StatFilter>("All");
+  const [slip, setSlip] = useState<BetLeg[]>([]);
+  const [stake, setStake] = useState(25);
 
-  const gamesQuery = useQuery({
-    queryKey: ["todayGames"],
-    queryFn: fetchTodayGames,
+  const recsQuery = useQuery({
+    queryKey: ["recommendations"],
+    queryFn: () => fetchRecommendations(),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -383,132 +77,216 @@ export default function PropsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const recsQuery = useQuery({
-    queryKey: ["recommendations"],
-    queryFn: () => fetchRecommendations(),
-    staleTime: 5 * 60 * 1000,
-  });
+  // Build a lookup from (player, stat) -> over_odds so each pick card can show real book odds.
+  const oddsLookup = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of propsQuery.data ?? []) {
+      const p = row as PlayerProps;
+      for (const [stat, line] of Object.entries(p.props)) {
+        if (line) map.set(`${p.player}|${stat}`, line.over_odds);
+      }
+    }
+    return map;
+  }, [propsQuery.data]);
 
-  const games = gamesQuery.data ?? [];
-  const allProps = propsQuery.data ?? [];
-  const recs = recsQuery.data ?? [];
+  const picks = useMemo(() => {
+    const recs = recsQuery.data ?? [];
+    let filtered = recs;
+    if (filter !== "All") {
+      filtered = filtered.filter(
+        (r) => STAT_LABEL[r.best_stat] === filter,
+      );
+    }
+    if (scope === "My Team") {
+      filtered = filtered.filter(
+        (r) => abbr(r.home_team) === myTeam || abbr(r.away_team) === myTeam,
+      );
+    }
+    return filtered;
+  }, [recsQuery.data, filter, scope, myTeam]);
 
-  const filteredProps = useMemo(
-    () =>
-      selectedGameId
-        ? allProps.filter((p) => p.game_id === selectedGameId)
-        : allProps,
-    [allProps, selectedGameId],
+  const addLeg = (rec: Recommendation) => {
+    const stat = STAT_LABEL[rec.best_stat];
+    if (!stat) return;
+    const id = `${rec.player}|${stat}`;
+    if (slip.some((l) => l.id === id)) return;
+    const odds = oddsLookup.get(`${rec.player}|${rec.best_stat}`) ?? -110;
+    setSlip((s) => [
+      ...s,
+      {
+        id,
+        player: rec.player,
+        stat,
+        line: rec.best_line,
+        hits: rec.best_hits,
+        games: rec.games_checked,
+        odds,
+      },
+    ]);
+  };
+
+  const removeLeg = (id: string) =>
+    setSlip((s) => s.filter((l) => l.id !== id));
+
+  const parlayDecimal = slip.reduce(
+    (acc, leg) => acc * americanToDecimal(leg.odds),
+    1,
   );
-
-  const isLoading = gamesQuery.isLoading || propsQuery.isLoading;
-  const isError = gamesQuery.isError || propsQuery.isError;
-  const error = gamesQuery.error ?? propsQuery.error;
+  const toWin = slip.length > 0 ? stake * parlayDecimal - stake : 0;
 
   return (
-    <div className="page">
-      <h1 className="page-title">Betting Lines &amp; Props</h1>
+    <div className="picks-grid">
+      <section className="card picks-hero-card">
+        <header className="card-hd">
+          <h2>Top Picks Tonight</h2>
+          <div className="seg">
+            {(["All", "PTS", "REB", "AST"] as const).map((f) => (
+              <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
+                {f}
+              </button>
+            ))}
+          </div>
+        </header>
 
-      {isLoading && <p className="status">Loading today's odds...</p>}
-      {isError && (
-        <p className="status error">
-          {(error as Error)?.message ??
-            "Failed to load odds. Ensure THE_ODDS_API_KEY is set in backend/.env"}
-        </p>
-      )}
-
-      {/* Recommended picks */}
-      {recs.length > 0 && (
-        <section className="rec-section">
-          <h2 className="section-title">Recommended Picks</h2>
-          <p className="rec-subtitle">
-            Players hitting over their line most often in their last 5 games
+        {recsQuery.isLoading && (
+          <p className="status-msg">Analyzing player trends — this can take ~30 seconds…</p>
+        )}
+        {recsQuery.isError && (
+          <p className="status-msg error">
+            {(recsQuery.error as Error)?.message ??
+              "Failed to load picks. Set THE_ODDS_API_KEY in backend/.env."}
           </p>
-          <div className="rec-grid">
-            {recs.map((rec, i) => (
-              <RecCard key={`${rec.player}-${i}`} rec={rec} />
-            ))}
+        )}
+        {!recsQuery.isLoading && !recsQuery.isError && picks.length === 0 && (
+          <p className="status-msg">No qualifying picks for this filter right now.</p>
+        )}
+
+        {picks.length > 0 && (
+          <div className="picks-cards">
+            {picks.map((rec) => {
+              const stat = STAT_LABEL[rec.best_stat];
+              const tier =
+                rec.best_hits === rec.games_checked
+                  ? "fire"
+                  : rec.best_hits >= rec.games_checked - 1
+                    ? "hot"
+                    : "";
+              const pct = Math.round((rec.best_hits / Math.max(rec.games_checked, 1)) * 100);
+              const odds = oddsLookup.get(`${rec.player}|${rec.best_stat}`);
+              const teamAbbr = abbr(rec.home_team) === myTeam ? abbr(rec.home_team) : abbr(rec.away_team);
+              const values = rec.best_results.map((r) => r.value);
+              const inSlip = slip.some((l) => l.id === `${rec.player}|${stat}`);
+              return (
+                <div key={`${rec.player}-${stat}`} className={`pick-card ${tier}`}>
+                  <div className="pick-top">
+                    <PlayerAvatar
+                      playerId={rec.player_id}
+                      teamAbbr={teamAbbr}
+                      size={36}
+                      myTeam={myTeam}
+                    />
+                    <div className="pick-who">
+                      <div className="pick-player">{rec.player}</div>
+                      <div className="pick-game">
+                        {abbr(rec.away_team)} <span className="muted">@</span> {abbr(rec.home_team)}
+                      </div>
+                    </div>
+                    <span className={`tier-badge ${tier}`}>
+                      {rec.best_hits}/{rec.games_checked}
+                    </span>
+                  </div>
+                  <div className="pick-prop-block">
+                    <span className="pick-ou">OVER</span>
+                    <span className="pick-line-num">{rec.best_line}</span>
+                    <span className="pick-stat">{stat}</span>
+                  </div>
+                  <Sparkline values={values} line={rec.best_line} w={220} h={42} />
+                  <div className="pick-foot">
+                    <HitDots values={values} line={rec.best_line} />
+                    <span className="pick-rate-val">{pct}% hit rate</span>
+                    <span className="pick-odds">{fmtOdds(odds)}</span>
+                  </div>
+                  <button
+                    className="add-slip"
+                    onClick={() => addLeg(rec)}
+                    disabled={inSlip}
+                  >
+                    {inSlip ? "✓ Added" : "+ Add to slip"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
-        </section>
-      )}
-      {recsQuery.isLoading && (
-        <p className="status">Analyzing player trends...</p>
-      )}
+        )}
+      </section>
 
-      {/* Game cards */}
-      {games.length > 0 && (
-        <section className="games-section">
-          <h2 className="section-title">Today's Games</h2>
-          <div className="games-row">
-            {games.map((game) => (
-              <GameCard
-                key={game.id}
-                game={game}
-                selected={selectedGameId === game.id}
-                onClick={() =>
-                  setSelectedGameId((id) =>
-                    id === game.id ? null : game.id,
-                  )
-                }
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      <aside className="card slip-card">
+        <header className="card-hd">
+          <h2>My Slip</h2>
+          <span className="muted">
+            {slip.length} {slip.length === 1 ? "leg" : "legs"}
+          </span>
+        </header>
 
-      {!isLoading && !isError && games.length === 0 && (
-        <p className="status">No NBA games scheduled today.</p>
-      )}
-
-      {/* Player Props table */}
-      {allProps.length > 0 && (
-        <section className="props-section">
-          <h2 className="section-title">Player Props</h2>
-
-          <div className="game-tabs">
-            <button
-              className={`game-tab ${!selectedGameId ? "game-tab--active" : ""}`}
-              onClick={() => setSelectedGameId(null)}
-            >
-              All Games
-            </button>
-            {games
-              .filter((g) => allProps.some((p) => p.game_id === g.id))
-              .map((g) => (
+        {slip.length === 0 ? (
+          <p className="slip-empty">Add picks from the left to build your slip.</p>
+        ) : (
+          <ul className="slip-list">
+            {slip.map((l) => (
+              <li key={l.id}>
+                <div>
+                  <strong>{l.player}</strong> O {l.line} {l.stat}
+                </div>
                 <button
-                  key={g.id}
-                  className={`game-tab ${selectedGameId === g.id ? "game-tab--active" : ""}`}
-                  onClick={() =>
-                    setSelectedGameId((id) =>
-                      id === g.id ? null : g.id,
-                    )
-                  }
+                  className="slip-remove"
+                  onClick={() => removeLeg(l.id)}
+                  aria-label="Remove leg"
+                  title="Remove"
                 >
-                  {teamShort(g.away_team)} @ {teamShort(g.home_team)}
+                  ✕
                 </button>
-              ))}
-          </div>
+                <div className="slip-meta">
+                  {l.hits}/{l.games} last {l.games} · {fmtOdds(l.odds)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
 
-          <div className="props-table-wrapper">
-            <table className="props-table">
-              <thead>
-                <tr>
-                  <th className="col-player">Player</th>
-                  <th>PTS O/U</th>
-                  <th>REB O/U</th>
-                  <th>AST O/U</th>
-                  <th>Last 5 (PTS)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProps.map((row, i) => (
-                  <PropRow key={`${row.player}-${i}`} row={row} />
-                ))}
-              </tbody>
-            </table>
+        <div className="slip-foot">
+          <div className="slip-row">
+            <span>Stake</span>
+            <span>
+              <span style={{ color: "var(--ink-3)", marginRight: 4 }}>$</span>
+              <input
+                type="number"
+                min={1}
+                value={stake}
+                onChange={(e) => setStake(Math.max(1, Number(e.target.value) || 0))}
+                style={{
+                  width: 64,
+                  border: "1px solid var(--line)",
+                  borderRadius: 6,
+                  padding: "2px 6px",
+                  textAlign: "right",
+                  background: "white",
+                  color: "inherit",
+                }}
+              />
+            </span>
           </div>
-        </section>
-      )}
+          <div className="slip-row total">
+            <span>To win</span>
+            <span className="big">
+              ${toWin.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <button className="place" disabled={slip.length === 0}>
+            Place pick
+          </button>
+          <p className="disclaimer">Demo only — no real wagers placed.</p>
+        </div>
+      </aside>
     </div>
   );
 }

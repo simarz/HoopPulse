@@ -56,7 +56,7 @@ async def get_player_stats(
     per_mode: str = "PerGame",
 ):
     key = f"player_stats:{season}:{season_type}:{measure_type}:{per_mode}"
-    cached = cache.get(key, ttl=21600)
+    cached = cache.get(key, ttl=1800)
     if cached is not None:
         return cached
 
@@ -90,7 +90,7 @@ async def get_player_stats(
 @router.get("/{player_id}/gamelog")
 async def get_player_gamelog(player_id: int, season: str = "2025-26", last_n: int = 5):
     key = f"player_gamelog:{player_id}:{season}:{last_n}"
-    cached = cache.get(key, ttl=300)
+    cached = cache.get(key, ttl=900)
     if cached is not None:
         return cached
 

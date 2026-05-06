@@ -279,7 +279,7 @@ def _find_player_id(name: str, all_players: list) -> int | None:
 async def _get_gamelog(player_id: int, season: str, sem: asyncio.Semaphore) -> list[dict]:
     """Combined reg season + playoffs gamelog, sharing the same cache as the /gamelog endpoint."""
     key = f"player_gamelog:{player_id}:{season}:5"
-    cached = cache.get(key, ttl=300)
+    cached = cache.get(key, ttl=900)
     if cached is not None:
         return cached
 
@@ -324,8 +324,9 @@ async def _get_gamelog(player_id: int, season: str, sem: asyncio.Semaphore) -> l
 @router.get("/recommendations")
 async def get_recommendations(season: str = "2025-26", top_n: int = 12):
     today_str = datetime.now(_ET).strftime("%Y-%m-%d")
-    cache_key = f"odds:recommendations:{today_str}:{season}"
-    cached = cache.get(cache_key, ttl=300)
+    # _v2 — added player_id to each rec; bumped to invalidate older cached entries.
+    cache_key = f"odds:recommendations_v2:{today_str}:{season}"
+    cached = cache.get(cache_key, ttl=900)
     if cached is not None:
         return cached
 
@@ -379,6 +380,7 @@ async def get_recommendations(season: str = "2025-26", top_n: int = 12):
 
         return {
             "player": prop_row["player"],
+            "player_id": player_id,
             "away_team": prop_row["away_team"],
             "home_team": prop_row["home_team"],
             "best_stat": best_stat,
