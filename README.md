@@ -4,12 +4,12 @@ A full-stack NBA statistics dashboard with live game tracking, player/team analy
 
 ## Features
 
-- **Players** — League-wide player stats (Traditional & Advanced), sortable table, player detail card with shooting efficiency bars, follow/pin players
-- **Teams** — Team stats with conference filter (East/West), Base & Advanced metrics (ORTG, DRTG, Net Rating, Pace), team logo display
-- **Live** — Live play-by-play scoreboard for games in progress
-- **Props** — Today's player prop recommendations based on recent game logs vs. betting lines (points, rebounds, assists)
-- **Dark mode** — Toggle between light and dark themes, persisted in `localStorage`
-- **Search & My Team** — Global player/team search and a personal team filter
+- **Players**: League-wide player stats (Traditional & Advanced), sortable table, player detail card with shooting efficiency bars, follow/pin players
+- **Teams**: Team stats with conference filter (East/West), Base & Advanced metrics (ORTG, DRTG, Net Rating, Pace), team logo display
+- **Live**: Live play-by-play scoreboard for games in progress
+- **Props**: Today's player prop recommendations based on recent game logs vs. betting lines (points, rebounds, assists)
+- **Dark mode**: Toggle between light and dark themes, persisted in `localStorage`
+- **Search & My Team**: Global player/team search and a personal team filter
 
 ## Tech Stack
 
